@@ -1,0 +1,7 @@
+{
+  "name": "Memory Garden (记忆回廊)",
+  "description": "An atmospheric, particle-based AI chat experience inspired by Penderecki's Garden. Features 3D image particle visualization, musical reactivity, and a memory corridor.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
