@@ -52,9 +52,6 @@ export const sendMessage = async (
   newMessage: string
 ): Promise<string> => {
   try {
-    // Construct simplified history for context
-    // In a real production app, we would use multi-turn chat history properly
-    // Here we concatenate the last few messages for context to save tokens/complexity in single-file strictness
     const context = history.slice(-5).map(m => `${m.role === 'user' ? '用户' : '我'}: ${m.text}`).join('\n');
     const prompt = `${context}\n用户: ${newMessage}\n(请简短回复，像朋友一样)`;
 
@@ -73,23 +70,46 @@ export const sendMessage = async (
   }
 };
 
-export const generatePostcardSummary = async (history: Message[]): Promise<string> => {
+export interface PostcardGenResult {
+  cn: string;
+  en: string;
+  mood: string;
+}
+
+export const generatePostcardSummary = async (history: Message[]): Promise<PostcardGenResult> => {
   try {
     const transcript = history.map(m => m.text).join('\n');
     const prompt = `
-    根据以下对话内容，生成一段非常简短、优美、像俳句或诗歌一样的明信片寄语。
-    不要超过30个字。
-    对话内容：
+    Based on the following conversation, generate a JSON object containing a poetic summary for a postcard.
+    
+    Requirements:
+    1. 'cn': A very short, poetic summary in Chinese (max 15 chars).
+    2. 'en': A poetic translation of that summary in English.
+    3. 'mood': A single word describing the mood (e.g., Nostalgic, Serene, Joyful) in English.
+    
+    Conversation:
     ${transcript}
+
+    Output JSON only.
     `;
 
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash',
       contents: prompt,
+      config: {
+        responseMimeType: 'application/json'
+      }
     });
 
-    return response.text || "时光静好，记忆永存。";
+    const text = response.text;
+    if (!text) throw new Error("No response");
+    
+    return JSON.parse(text) as PostcardGenResult;
   } catch (error) {
-    return "时光静好。";
+    return {
+      cn: "时光静好，记忆永存。",
+      en: "Time stands still, memories remain.",
+      mood: "Peaceful"
+    };
   }
 };

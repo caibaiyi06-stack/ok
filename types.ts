@@ -1,5 +1,6 @@
 export enum AppState {
-  LANDING = 'LANDING',
+  INTRO = 'INTRO',
+  LANDING = 'LANDING', // This is now the Upload screen
   SELECTION = 'SELECTION',
   CHAT = 'CHAT',
   POSTCARD_VIEW = 'POSTCARD_VIEW',
@@ -15,12 +16,15 @@ export interface Message {
 export interface PostcardData {
   id: string;
   imageUrl: string;
-  summary: string;
+  summary: string; // Chinese
+  summaryEn: string; // English
   date: string;
   time: string;
+  duration: string; // e.g. "12m"
   viewCount: number;
   particles: number;
   mood: string;
+  userNote?: string; // For the back of the card
 }
 
 export interface ParticleConfig {
