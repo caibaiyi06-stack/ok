@@ -1,226 +1,193 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Text, Image as DreiImage, Html } from '@react-three/drei';
+import { Text, Image as DreiImage, Html, Float } from '@react-three/drei';
 import * as THREE from 'three';
 import { PostcardData } from '../types';
 
 interface Postcard3DProps {
   data: PostcardData;
   onClose: () => void;
+  onSave: (note: string) => void;
 }
 
-const Postcard3D: React.FC<Postcard3DProps> = ({ data, onClose }) => {
+// Generates a Bauhaus-style abstract pattern based on the ID
+const AbstractBackPattern = ({ id }: { id: string }) => {
+  const seed = parseInt(id.slice(-4));
+  
+  const shapes = useMemo(() => {
+    const items = [];
+    const colors = ["#8a6a4b", "#2a2a2a", "#d4af37", "#555555", "#9e8a58"];
+    
+    for (let i = 0; i < 5; i++) {
+        const type = (seed + i) % 3; // 0: Sphere, 1: Cone, 2: Torus
+        const scale = 0.5 + Math.random() * 0.8;
+        const x = (Math.random() - 0.5) * 3;
+        const y = (Math.random() - 0.5) * 4;
+        const z = Math.random() * 0.5;
+        const color = colors[(seed + i) % colors.length];
+        items.push({ type, position: [x, y, z] as [number, number, number], scale, color });
+    }
+    return items;
+  }, [seed]);
+
+  return (
+    <group position={[0, 0, -0.1]}>
+        {shapes.map((s, i) => (
+            <Float key={i} speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
+                <mesh position={s.position} scale={s.scale}>
+                    {s.type === 0 && <sphereGeometry args={[0.5, 32, 32]} />}
+                    {s.type === 1 && <coneGeometry args={[0.5, 1, 32]} />}
+                    {s.type === 2 && <torusGeometry args={[0.4, 0.15, 16, 100]} />}
+                    <meshStandardMaterial color={s.color} roughness={0.4} metalness={0.6} />
+                </mesh>
+            </Float>
+        ))}
+         {/* Background Plane for geometric composition */}
+         <mesh position={[0, 0, -0.5]}>
+            <planeGeometry args={[4, 6]} />
+            <meshStandardMaterial color="#1a1a1a" roughness={0.9} />
+        </mesh>
+    </group>
+  );
+};
+
+const Postcard3D: React.FC<Postcard3DProps> = ({ data, onClose, onSave }) => {
   const groupRef = useRef<THREE.Group>(null);
   const [flipped, setFlipped] = useState(false);
-  const { mouse } = useThree();
-  const [userNote, setUserNote] = useState("");
-  
-  // Animation State
+  const [userNote, setUserNote] = useState(data.userNote || "");
   const animationProgress = useRef(0);
 
   useFrame((state, delta) => {
     if (groupRef.current) {
-      
-      // --- Entrance Animation Logic ---
+      // Entrance Animation: Spiral from far back
       if (animationProgress.current < 1.0) {
-        animationProgress.current += delta * 1.5; // Speed of entrance
-        if (animationProgress.current > 1.0) animationProgress.current = 1.0;
+        animationProgress.current += delta * 1.2;
+        const p = Math.min(animationProgress.current, 1.0);
+        const ease = 1 - Math.pow(1 - p, 4); 
+
+        groupRef.current.position.z = THREE.MathUtils.lerp(-10, 0, ease);
+        groupRef.current.rotation.z = THREE.MathUtils.lerp(Math.PI, 0, ease);
+        groupRef.current.scale.setScalar(ease);
+      } else {
+        // Interactive Flip State
+        const targetRotY = flipped ? Math.PI : 0;
+        groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotY, 0.08);
         
-        const p = animationProgress.current;
-        const easeOut = 1 - Math.pow(1 - p, 3); // Cubic ease out
-        
-        // Scale up from 0
-        groupRef.current.scale.setScalar(easeOut);
-        
-        // Rotate in 
-        const entranceRot = (1 - easeOut) * Math.PI * 2;
-        groupRef.current.rotation.y = entranceRot;
+        // Idle Float
+        groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.1;
       }
-
-      // Base rotation target
-      const targetRotY = flipped ? Math.PI : 0;
-      
-      // Mouse Interaction (Parallax)
-      const tiltX = -mouse.y * 0.1; 
-      const tiltY = mouse.x * 0.1; 
-
-      if (animationProgress.current >= 0.9) {
-          // Normal interactive state with damping
-          groupRef.current.rotation.y = THREE.MathUtils.lerp(groupRef.current.rotation.y, targetRotY + tiltY, 0.05);
-          groupRef.current.rotation.x = THREE.MathUtils.lerp(groupRef.current.rotation.x, tiltX, 0.05);
-      } 
-      
-      // Gentle Floating
-      groupRef.current.position.y = Math.sin(state.clock.elapsedTime * 0.5) * 0.05;
     }
   });
 
   return (
-    <group 
-      ref={groupRef} 
-      scale={[0, 0, 0]} // Start invisible/small
-      onPointerOver={() => (document.body.style.cursor = 'pointer')}
-      onPointerOut={() => (document.body.style.cursor = 'auto')}
-    >
-      {/* === GROUP 1: FRONT SIDE === */}
-      {/* We use a slight offset to prevent Z-fighting */}
-      <group position={[0, 0, 0.01]}>
-        
-        {/* Card Body - Front */}
-        <mesh>
-          <planeGeometry args={[4.2, 6.2]} />
-          <meshStandardMaterial color="#0a0a0a" roughness={0.4} metalness={0.1} />
+    <group ref={groupRef}>
+      {/* === FRONT SIDE === */}
+      <group visible={!flipped || (groupRef.current?.rotation.y || 0) < Math.PI / 2}>
+        {/* Card Base */}
+        <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[4.2, 6.2, 0.05]} />
+          <meshStandardMaterial color="#111" roughness={0.5} />
         </mesh>
         
-        {/* Gold Border */}
-        <lineSegments position={[0, 0, 0.001]}>
-           <edgesGeometry args={[new THREE.PlaneGeometry(4.0, 6.0)]} />
-           <lineBasicMaterial color="#9e8a58" />
+        {/* Gold Border Frame */}
+        <mesh position={[0, 0, 0.03]}>
+           <ringGeometry args={[0, 0, 4, 1]} /> 
+           <meshBasicMaterial color="transparent" /> 
+        </mesh>
+        <lineSegments position={[0, 0, 0.04]}>
+            <edgesGeometry args={[new THREE.PlaneGeometry(4.0, 6.0)]} />
+            <lineBasicMaterial color="#9e8a58" />
         </lineSegments>
 
-        {/* Image Area - Mounted Style */}
-        <group position={[0, 1, 0.02]}>
-            <mesh position={[0, 0, -0.005]}>
-                <planeGeometry args={[3.6, 3.6]} />
-                <meshBasicMaterial color="#000" />
-            </mesh>
-            <DreiImage 
-                url={data.imageUrl} 
-                scale={[3.5, 3.5]} 
-                transparent 
-            />
+        {/* Image */}
+        <group position={[0, 1.2, 0.04]}>
+            <DreiImage url={data.imageUrl} scale={[3.6, 3.6]} transparent />
         </group>
 
-        {/* Text Area */}
-        <group position={[0, -1.8, 0.02]}>
+        {/* Typography */}
+        <group position={[0, -1.8, 0.06]}>
              <Text
-                position={[0, 0.5, 0]}
-                fontSize={0.22}
+                fontSize={0.2}
                 color="#e8e0cc"
                 font="https://fonts.gstatic.com/s/notoserifsc/v12/H4clBXKMp9juaqM87vKSowt7w9Q.woff"
                 maxWidth={3.5}
                 textAlign="center"
-                lineHeight={1.4}
+                lineHeight={1.5}
               >
                 {data.summary}
               </Text>
-
               <Text
-                position={[0, -0.2, 0]}
-                fontSize={0.09}
-                color="#888"
+                position={[0, -0.6, 0]}
+                fontSize={0.08}
+                color="#666"
                 maxWidth={3.5}
                 textAlign="center"
-                letterSpacing={0.15}
-                font="https://fonts.gstatic.com/s/cinzel/v11/8vIJ7ww63mVu7gt78Uk.woff"
+                letterSpacing={0.1}
               >
                 {data.summaryEn.toUpperCase()}
               </Text>
               
-              <mesh position={[0, -0.6, 0]}>
-                 <planeGeometry args={[0.5, 0.005]} />
-                 <meshBasicMaterial color="#9e8a58" />
-              </mesh>
+              {/* Metadata strip */}
+              <group position={[0, -1.1, 0]}>
+                  <Text fontSize={0.08} color="#9e8a58" letterSpacing={0.2}>
+                      {data.date} — {data.time} — {data.duration}
+                  </Text>
+              </group>
+        </group>
+
+        {/* Flip Button Area (Invisible Interactor) */}
+        <mesh position={[1.8, -2.8, 0.1]} onClick={() => setFlipped(true)} onPointerOver={() => document.body.style.cursor='pointer'} onPointerOut={() => document.body.style.cursor='auto'}>
+             <circleGeometry args={[0.3, 32]} />
+             <meshBasicMaterial color="#9e8a58" transparent opacity={0.2} />
+        </mesh>
+         <Text position={[1.8, -2.8, 0.11]} fontSize={0.15} color="#fff">↻</Text>
+      </group>
+
+
+      {/* === BACK SIDE === */}
+      <group rotation={[0, Math.PI, 0]} visible={flipped || (groupRef.current?.rotation.y || 0) > Math.PI / 2}>
+         {/* Card Base */}
+         <mesh position={[0, 0, 0]}>
+          <boxGeometry args={[4.2, 6.2, 0.05]} />
+          <meshStandardMaterial color="#050505" roughness={0.2} metalness={0.5} />
+        </mesh>
+
+        {/* Abstract Geometry Art */}
+        <group position={[0, 1, 0.1]}>
+             <AbstractBackPattern id={data.id} />
         </group>
         
-        {/* Click target for flipping (invisible overlay) */}
-        <mesh position={[0, 0, 0.1]} onClick={() => setFlipped(true)} visible={false}>
-            <planeGeometry args={[4.2, 6.2]} />
-        </mesh>
-      </group>
-
-
-      {/* === GROUP 2: BACK SIDE === */}
-      <group rotation={[0, Math.PI, 0]} position={[0, 0, -0.01]}>
-         {/* Card Body - Back (Dark Paper) */}
-         <mesh>
-          <planeGeometry args={[4.2, 6.2]} />
-          <meshStandardMaterial color="#111" roughness={0.8} />
-        </mesh>
-
-        <group position={[0, 0, 0.01]}>
-            {/* Header */}
-            <Text position={[0, 2.5, 0]} fontSize={0.15} color="#444" letterSpacing={0.3} font="https://fonts.gstatic.com/s/cinzel/v11/8vIJ7ww63mVu7gt78Uk.woff">
-                MEMORY LOG
+        {/* Mood/Input Section */}
+        <group position={[0, -1.5, 0.04]}>
+            <Text position={[0, 1, 0]} fontSize={0.12} color="#9e8a58" letterSpacing={0.2}>
+                REFLECTIONS
             </Text>
-
-            {/* Metadata Grid */}
-            <group position={[-1.2, 1.5, 0]} scale={0.8}>
-                 {/* DATE */}
-                 <Text position={[0, 0, 0]} fontSize={0.12} color="#666" anchorX="left" letterSpacing={0.1}>DATE</Text>
-                 <Text position={[0, -0.25, 0]} fontSize={0.18} color="#e8e0cc" anchorX="left" font="https://fonts.gstatic.com/s/cinzel/v11/8vIJ7ww63mVu7gt78Uk.woff">{data.date}</Text>
-                 
-                 {/* TIME */}
-                 <Text position={[2, 0, 0]} fontSize={0.12} color="#666" anchorX="left" letterSpacing={0.1}>DURATION</Text>
-                 <Text position={[2, -0.25, 0]} fontSize={0.18} color="#e8e0cc" anchorX="left" font="https://fonts.gstatic.com/s/cinzel/v11/8vIJ7ww63mVu7gt78Uk.woff">{data.duration}</Text>
-                 
-                 {/* VIEW COUNT */}
-                 <Text position={[0, -1.0, 0]} fontSize={0.12} color="#666" anchorX="left" letterSpacing={0.1}>REVISIT</Text>
-                 <Text position={[0, -1.25, 0]} fontSize={0.18} color="#e8e0cc" anchorX="left" font="https://fonts.gstatic.com/s/cinzel/v11/8vIJ7ww63mVu7gt78Uk.woff">NO. 0{data.viewCount}</Text>
-            </group>
-
-            {/* Mood Stamp */}
-            <group position={[1.2, -0.5, 0.02]} rotation={[0, 0, -0.2]}>
-                <mesh>
-                    <ringGeometry args={[0.5, 0.52, 32]} />
-                    <meshBasicMaterial color="#9e8a58" transparent opacity={0.6} />
-                </mesh>
-                <Text fontSize={0.15} color="#9e8a58" letterSpacing={0.1} font="https://fonts.gstatic.com/s/cinzel/v11/8vIJ7ww63mVu7gt78Uk.woff">
-                    {data.mood.toUpperCase()}
-                </Text>
-            </group>
             
-            {/* Writing Lines */}
-            <group position={[0, -1.5, 0]}>
-                <mesh position={[0, 0.4, 0]}>
-                    <planeGeometry args={[3, 0.01]} />
-                    <meshBasicMaterial color="#333" />
-                </mesh>
-                <mesh position={[0, -0.4, 0]}>
-                    <planeGeometry args={[3, 0.01]} />
-                    <meshBasicMaterial color="#333" />
-                </mesh>
-                
-                {/* HTML Input Overlay - Only visible when flipped to back */}
-                {flipped && (
-                    <Html transform position={[0, 0.1, 0.05]} occlude="blending" scale={0.3}>
-                        <textarea 
-                            value={userNote}
-                            onChange={(e) => setUserNote(e.target.value)}
-                            placeholder="Write your thoughts here..."
-                            className="w-[800px] h-[300px] bg-transparent text-gray-300 font-serif text-4xl text-center border-none outline-none resize-none placeholder-gray-700 leading-[3em]"
-                            style={{ 
-                                background: 'transparent',
-                                fontFamily: '"Noto Serif SC", serif'
-                            }}
-                        />
-                    </Html>
-                )}
-            </group>
-            
-            {/* Return Button */}
-            <group position={[0, -2.5, 0]} onClick={(e) => { e.stopPropagation(); setFlipped(false); }}>
-                 <Text fontSize={0.1} color="#444" letterSpacing={0.2} font="https://fonts.gstatic.com/s/cinzel/v11/8vIJ7ww63mVu7gt78Uk.woff">
-                    FLIP BACK
-                 </Text>
-            </group>
+             <Html transform position={[0, -0.2, 0]} occlude="blending" scale={0.4}>
+                <div className="w-[300px] flex flex-col items-center gap-4">
+                    <textarea 
+                        value={userNote}
+                        onChange={(e) => setUserNote(e.target.value)}
+                        placeholder="Write down your feelings at this moment..."
+                        className="w-full h-32 bg-white/5 border border-white/10 p-4 text-white font-serif text-sm focus:border-yellow-500/50 outline-none resize-none text-center placeholder-white/20"
+                    />
+                    <button 
+                        onClick={() => onSave(userNote)}
+                        className="px-6 py-2 bg-yellow-900/20 border border-yellow-500/20 text-yellow-100 font-serif tracking-widest text-xs hover:bg-yellow-900/40 transition-all uppercase"
+                    >
+                        Store Memory
+                    </button>
+                </div>
+            </Html>
         </group>
-
-        {/* Click target for flipping back (if clicking outside input) */}
-        <mesh position={[0, 0, -0.1]} onClick={() => setFlipped(false)} visible={false}>
-             <planeGeometry args={[4.2, 6.2]} />
+        
+        {/* Return Flip */}
+        <mesh position={[1.8, -2.8, 0.1]} onClick={() => setFlipped(false)} onPointerOver={() => document.body.style.cursor='pointer'} onPointerOut={() => document.body.style.cursor='auto'}>
+             <circleGeometry args={[0.3, 32]} />
+             <meshBasicMaterial color="#9e8a58" transparent opacity={0.2} />
         </mesh>
-
+         <Text position={[1.8, -2.8, 0.11]} fontSize={0.15} color="#fff">↻</Text>
       </group>
-
-      {/* Helper UI Text Floating below */}
-      {!flipped && (
-        <Html position={[0, -3.8, 0]} center>
-            <div className="text-[10px] text-yellow-500/40 tracking-[0.4em] uppercase font-serif animate-pulse pointer-events-none">
-                Click Card to Inspect
-            </div>
-        </Html>
-      )}
     </group>
   );
 };

@@ -11,13 +11,13 @@ const AudioController: React.FC<AudioControllerProps> = ({ isPlaying, onData }) 
   const contextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const rafRef = useRef<number>();
+  const rafRef = useRef<number>(0);
 
   useEffect(() => {
     // Initialize Audio Context on first interaction
     if (isPlaying && !contextRef.current) {
         const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        contextRef.current = new AudioContext();
+        contextRef.current = new AudioContext({});
         analyserRef.current = contextRef.current.createAnalyser();
         analyserRef.current.fftSize = 256;
         

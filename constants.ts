@@ -1,4 +1,4 @@
-export const MUSIC_URL = "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=movement-200697.mp3"; // A calm, classical/ambient track similar to Impromptu
+export const MUSIC_URL = "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=movement-200697.mp3"; 
 
 export const DEFAULT_PARTICLE_CONFIG = {
   size: 1.8,
